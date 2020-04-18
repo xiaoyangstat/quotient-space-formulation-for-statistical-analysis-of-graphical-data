@@ -203,7 +203,7 @@ def match_extended_nx(G1,G2, laplacian = False, one_way = False,
         #p = [i-1 for i in p]
 
         # Python
-        p = sfw(-1*A2,A1,30)
+        p = sfw(-1*A2,A1,w*D.transpose())
         A1p = permutate_adjmat(p,A1)
         P = perm_list_to_mat(p)
     else:

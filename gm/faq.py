@@ -161,13 +161,13 @@ def fun(x,A,B):
 
     return f0
 
-def fungrad(x,A,B):
+def fungrad(x,A,B,D):
     m,n = A.shape
     P,Q = unstack(x,m,n)
     f0 = fun(x,A,B)
-    tmp = B@Q@A.transpose()
+    tmp = B@Q@A.transpose()+D
     g = tmp.reshape(m*m,1,order='F').copy()
-    tmp = B.transpose()@P@A
+    tmp = B.transpose()@P@A+D
     g1 = tmp.reshape(n*n,1,order='F').copy()
     g = np.vstack((g,g1))
     return f0, g
@@ -544,7 +544,7 @@ def lapjv(costMat, resolution=None):
 
     return rowsol,cost,v,u,costMat
 
-def sfw(A,B,IMAX=30,x0=None):
+def sfw(A,B,D=None,IMAX=30,x0=None):
     """
     perform at most IMAX iterations of the Frank-Wolfe
     method to compute an approximate solution to the
@@ -608,7 +608,7 @@ def sfw(A,B,IMAX=30,x0=None):
     myps.fill(np.nan)
     while ((iter < IMAX) and (stop == 0)):
         # fun + grad
-        f0,g = fungrad(x,A,B)
+        f0,g = fungrad(x,A,B,D)
         g1 = g[0:n**2] + g[(n**2):]
         g2 = g[0:n**2] + g[(n**2):]
         g = np.vstack((g1,g2))/2
