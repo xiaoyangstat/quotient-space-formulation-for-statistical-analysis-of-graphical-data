@@ -123,7 +123,7 @@ def match_extended_nx(G1,G2, laplacian = False, one_way = False,
                       algo = 'umeyama', max_hc=None,
                       paral = False):
     """Graph Matching
-    
+
     Args:
         w: tuning parameter to balance edge attributes and node attributes
 
@@ -138,19 +138,19 @@ def match_extended_nx(G1,G2, laplacian = False, one_way = False,
     """
     n1 = G1.number_of_nodes()
     n2 = G2.number_of_nodes()
-    
+
     if one_way:
         N = np.max([n1,n2])
     else:
         N = n1+n2
-    
+
     ## distance matrix for node attributes
     if D_nd is None:
         D = np.zeros((N,N))
         if use_node == 'coordinate':
             #D[:n2,:n1] = node_sqdists(G1,G2,attr=attr)
             print('using node attributes:', use_node)
-            D = node_sqdists(G1,G2,attr=attr)
+            D = node_sqdists(G1,G2,attr=attr,one_way=one_way)
         elif use_node == 'molecule':
             D = chem_bin_dist(G1,G2)
             print('using node attributes:', use_node)
@@ -174,7 +174,7 @@ def match_extended_nx(G1,G2, laplacian = False, one_way = False,
             G1.add_nodes_from(range(n1,n2))
         else:
             G2.add_nodes_from(range(n2,n1))
-    else:        
+    else:
         G1.add_nodes_from(range(n1,N))
         G2.add_nodes_from(range(n2,N))
 
@@ -210,7 +210,7 @@ def match_extended_nx(G1,G2, laplacian = False, one_way = False,
         print('matching graphs using umeyama and hill climb')
         A1p,P, _= umeyama_then_hill_climb_mat(A1,A2,w*D, max_hc=max_hc)
         p = perm_mat_to_list(P)
-    
+
 #     pinv = perm_mat_to_list(P.T)
 #     n0 = n1
 #     for n in range(n1,N):
@@ -231,7 +231,7 @@ def match_extended_nx(G1,G2, laplacian = False, one_way = False,
 
     G1p = permutate_nx(p,G1)
     G2p = G2.copy()
-    
+
     if not one_way:
         # remove null nodes
         for n in range(n2):
@@ -250,9 +250,9 @@ def match_extended_nx(G1,G2, laplacian = False, one_way = False,
                 G2p.nodes[n].update(G1p.nodes[n])
         G1.remove_nodes_from(range(n1,N))
         G2.remove_nodes_from(range(n2,N))
-    
+
         #p = p[:n0]
-        
+
     return G1p,G2p,p,d,d0
 
 ## deprecated

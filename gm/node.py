@@ -26,26 +26,31 @@ def node_vec_pos(G,attr='v'):
         pos[n] = tuple(G.nodes[n][attr])
     return pos
 
-def node_sqdists(G1,G2,attr='v'):
+def node_sqdists(G1,G2,attr='v',one_way=False):
     """return a (n2+n1)x(n2+n1) matrix whose left top is n2xn1 real node distance
     """
     n1 = G1.number_of_nodes()
     n2 = G2.number_of_nodes()
-    N = n1+n2
-    D = np.empty((N,N))
+
+    if one_way:
+        N = np.max([n1,n2])
+    else:
+        N = n1+n2
+
+    D = np.zeros((N,N))
 
     for i in range(n1):
         for j in range(n2):
             D[j,i] = np.sum( (G1.nodes[i][attr]-G2.nodes[j][attr])**2 )
 
-    for i in range(n2,n1+n2):
+    for i in range(n2,N):
         for j in range(n1):
             D[i,j] = 0#np.sum((G1.node[i-n2][attr]-np.zeros(np.shape(G1.node[i-n2][attr])))**2)
     for i in range(n2):
-        for j in range(n1,n1+n2):
+        for j in range(n1,N):
             D[i,j] = 0#np.sum((G2.node[i][attr]-np.zeros(np.shape(G2.node[i][attr])))**2)
 
-    D[n2:,n1:] = np.zeros((n1,n2))
+    #D[n2:,n1:] = np.zeros((n1,n2))
 
     return D
 

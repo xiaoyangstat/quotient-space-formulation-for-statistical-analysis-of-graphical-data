@@ -17,7 +17,7 @@ from .match import permutate_adjmat,match_extended_nx
 
 
 def undirected_graphmat_to_vector(A):
-    """convert a symmetric adjacency matrix to vector of entries above diagonal
+    """Convert a symmetric adjacency matrix to vector of entries above diagonal
     """
     n = A.shape[0]
     p = n*(n-1)//2
@@ -31,7 +31,7 @@ def undirected_graphmat_to_vector(A):
     return v
 
 def undirected_graphmats_to_vectors(A):
-    """take a list of symmetric adjacency matrix to a matrix of entries above diagonal
+    """Take a list of symmetric adjacency matrix to a matrix of entries above diagonal
     """
     N = len(A)
     X0 = undirected_graphmat_to_vector(A[0])
@@ -66,7 +66,7 @@ def vector_to_undirected_graphmat(v):
     return A
 
 def original_mean(G):
-    """compute the original mean
+    """Compute the adjacency mean
     """
     G0 = G.copy()
 
@@ -83,7 +83,7 @@ def original_mean(G):
     return nx.from_numpy_matrix(np.mean(A,axis = 0))
 
 def muG_aligned(G, P, hasNumAttr=False, attr='v'):
-    """averaged aligned edge graph weights and node coordinates
+    """Average aligned edge graph weights and node coordinates
 
     In general: non-Euclidean node attributes cannot be averaged
     """
@@ -245,8 +245,7 @@ def pcaG_aligned(G, P=None, attr='v', w=1.0):
     return pca,scores, V
 
 def pcaG_aligned_edge(Gp, P=None):
-    """
-    PCA for aligned graphs, edge only
+    """PCA for aligned graphs, edge only
     """
     nodes=[]
     for g in Gp:
@@ -302,8 +301,7 @@ def pca_scores_to_graphs(pca,scores,n,d, attr='v', w=1.0):
     return G
 
 def pca_scores_to_graphs_structure(pca,scores):
-    """
-    restore the pca score to graph, edge only.
+    """Reconstruct the pca score to graph, edge only.
     """
     nGraph = scores.shape[0]
     nComp = pca.components_.shape[0]
@@ -318,10 +316,9 @@ def pca_scores_to_graphs_structure(pca,scores):
         G.append( nx.from_numpy_matrix(vector_to_undirected_graphmat(V[i,:]) ))
     return G
 
-def umeyama_ext_distmat(G1,G2=None, k_print=None,
-                        use_node = False, w=1.0, attr='v',
-                        algo = 'greedy', max_hc=None,
-                        T0 = 10**8, decay = 0.99, max_iter = 4000):
+def compute_distmat(G1,G2=None,k_print=None,one_way = False,
+                    use_node = False, w=1.0, attr='v',
+                    algo = 'umeyama', max_hc=None):
     """Pairwise Distance in Graph Space for G1 (List) and G2 (List)
     """
     n1 = len(G1)
@@ -353,9 +350,8 @@ def umeyama_ext_distmat(G1,G2=None, k_print=None,
         for j in range(j0,n2):
             g1 = G1[i].copy()
             g2 = G2[j].copy()
-            _,_,_,D[i,j],D0[i,j],_= match_extended_nx(g1,g2,w = w,
-                   use_node=use_node, attr = attr,
-                   algo = algo, max_hc=max_hc)
+            _,_,_,D[i,j],D0[i,j]= match_extended_nx(g1,g2,one_way=one_way,
+            w = w,use_node=use_node, attr = attr,algo = algo, max_hc=max_hc)
             if symm:
                 D[j,i] = D[i,j]
                 D0[j,i] = D0[i,j]
@@ -368,9 +364,9 @@ def umeyama_ext_distmat(G1,G2=None, k_print=None,
 
     return D, D0
 
-def umeyama_ext_distmat_paral(G1,G2=None, n_jobs=4,
-                              use_node = False, w=1.0, attr='v',
-                              lc = 'greedy', max_hc=None):
+def compute_distma_paral(G1,G2=None,n_jobs=4,one_way = False,
+                         use_node = False, w=1.0, attr='v',
+                         algo = 'umeyama', max_hc=None):
     """parallel version of extended distance matrix.
     """
     n1 = len(G1)
@@ -416,9 +412,9 @@ def umeyama_ext_distmat_paral(G1,G2=None, n_jobs=4,
 # CLASSIFICATION WRAPPERS
 ###############################################################################
 
-def rbf_arbitrary_dists(D_train,D_valid,D_test,
-                        y_train,y_valid,y_test,
-                        C_vec,gam_vec):
+def svm_rbf_distmat(D_train,D_valid,D_test,
+                    y_train,y_valid,y_test,
+                    C_vec,gam_vec):
     N_C = C_vec.size
     N_gamma = gam_vec.size
 
