@@ -1,18 +1,20 @@
 # -*- coding: utf-8 -*-
 """fast approximate quadratic programming
 
-Rewrote from https://github.com/jovo/FastApproximateQAP
+Rewrote from https://github.com/jovo/FastApproximateQAP;
+Support additional node attributes for matching
 
 Created on Mon Mar 27 2020
 
 @author: J. Derek Tucker, Xiaoyang Guo
 """
+
 import numpy as np
 import numpy.matlib
 from scipy.sparse import spdiags, eye
 from scipy.optimize import linprog
 import warnings
-#import lap
+import lap
 
 
 def assign(A, munk=True):
@@ -24,8 +26,8 @@ def assign(A, munk=True):
         p,w,x = maxassign_linprog(A.transpose())
         p = p.transpose()
     else:
-        p,w,v,u,costMat = lapjv(-A.transpose(), 0.01) # from original implementation
-        #costMat, p, w = lap.lapjv(-A.transpose()) # others
+        #p,w,v,u,costMat = lapjv(-A.transpose(), 0.01) # from original implementation, need debug
+        costMat, p, w = lap.lapjv(-A.transpose()) # from https://github.com/gatagat/lap
         w = -1*w
         x = perm2mat(p)
         x = x.transpose()
@@ -39,6 +41,9 @@ def dsproj(x,g,m,n):
     """
     P,Q = unstack(x,m,n)
     gP,gQ = unstack(g,m,n)
+
+    # import scipy.io
+    # scipy.io.savemat('test.mat', mdict={'d': -gQ})
 
     q,wq,wQ = assign(-gQ)
     wP = wQ
@@ -154,17 +159,18 @@ def maxassign_linprog(C):
 
     return p,w,x
 
-def fun(x,A,B):
+def fun(x,A,B,D):
     m,n = A.shape
     P,Q = unstack(x,m,n)
     f0 = np.sum(np.sum(np.multiply((P@A@Q.transpose()),B)))
-
+    f0 = f0 + np.trace(D)
+    
     return f0
 
 def fungrad(x,A,B,D):
     m,n = A.shape
     P,Q = unstack(x,m,n)
-    f0 = fun(x,A,B)
+    f0 = fun(x,A,B,D)
     tmp = B@Q@A.transpose()+D
     g = tmp.reshape(m*m,1,order='F').copy()
     tmp = B.transpose()@P@A+D
@@ -172,7 +178,7 @@ def fungrad(x,A,B,D):
     g = np.vstack((g,g1))
     return f0, g
 
-def lines(ltype,x,d,g,A,B):
+def lines(ltype,x,d,g,A,B,D):
     """
     line search 0 => salpha=1, 1=>search
     """
@@ -270,9 +276,9 @@ def lines(ltype,x,d,g,A,B):
         # derivative at alpha = 0
         b = (g.transpose()@d)[0,0]
         # constant term at alpha = 0
-        c = fun(x,A,B)
+        c = fun(x,A,B,D)
         # get second order coeff
-        fun_vertex = fun(x+d,A,B)
+        fun_vertex = fun(x+d,A,B,D)
         a = fun_vertex - b - c
         eps = np.finfo(np.double).eps
         if np.abs(a) < eps:
@@ -280,11 +286,12 @@ def lines(ltype,x,d,g,A,B):
         else:
             salpha = np.minimum(1,np.maximum(-b/(2*a),0))
 
-        fun_alpha = fun(x+salpha*d,A,B)
+        fun_alpha = fun(x+salpha*d,A,B,D)
         # check quadratic function
         qfun_alpha = a*salpha*salpha + b*salpha + c
         if ((np.abs(a)>=eps) and (np.abs(fun_alpha-qfun_alpha)>1000*abs(fun_alpha)*eps)):
-            print('quadratic search error %d,%g\n' % (fun_alpha,qfun_alpha))
+            pass
+            #print('quadratic search error %d,%g\n' % (fun_alpha,qfun_alpha))
 
         if fun_alpha>c:
             salpha = 0
@@ -299,7 +306,7 @@ def lines(ltype,x,d,g,A,B):
         print('unsuported line\n')
 
     xt = x + salpha * d
-    f0new = fun(xt,A,B)
+    f0new = fun(xt,A,B,D)
 
     return(f0new,salpha)
 
@@ -358,15 +365,15 @@ def lapjv(costMat, resolution=None):
             v[0,j] = costMat[:,j].min()
             imin = costMat[:,j].argmin()
             if not matches[imin]:
-                rowsol[imin] = j
-                colsol[j] = imin
-            elif v[0,j] < v[0,rowsol[imin]]:
+                rowsol[0,imin] = j
+                colsol[0,j] = imin
+            elif v[0,j] < v[0,rowsol[0,imin]]:
                 j1 = rowsol[imin]
                 rowsol[imin] = j
-                colsol[j] = imin
-                colsol[j1] = -1
+                colsol[0,j] = imin
+                colsol[0,j1] = -1
             else:
-                colsol[j] = -1
+                colsol[0,j] = -1
 
             matches[imin] += 1
 
@@ -377,9 +384,10 @@ def lapjv(costMat, resolution=None):
                 free[numfree] = i
             else:
                 if matches[i] == 1:
-                    j1 = rowsol[i]
+                    j1 = rowsol[0,i]
                     x = costMat[i,:] - v
-                    x[j1] = maxcost
+                    x = x.reshape((1,-1))
+                    x[0,j1] = maxcost
                     v[0,j1] = v[0,j1] - x.min()
     else:
         numfree = dim - 1
@@ -442,6 +450,7 @@ def lapjv(costMat, resolution=None):
                     free[numfree-1] = i0
     # augmentation phase
     for f in range(0,numfree):
+        #print('f',f,colsol)
         freerow = free[f]
         d = costMat[freerow,:] - v
         pred = freerow*np.ones((1,dim))
@@ -453,6 +462,7 @@ def lapjv(costMat, resolution=None):
             if up == low:
                 last = low - 1
                 d = d.reshape((1,-1))
+                print(collist,up)
                 minh = d[0,collist[up]]
                 up += 1
                 for k in range(up,dim):
@@ -607,6 +617,7 @@ def sfw(A,B,D=None,IMAX=30,x0=None):
     myps = np.empty((np.int(np.ceil(IMAX)),n))
     myps.fill(np.nan)
     while ((iter < IMAX) and (stop == 0)):
+        #print(iter)
         # fun + grad
         f0,g = fungrad(x,A,B,D)
         g1 = g[0:n**2] + g[(n**2):]
@@ -623,7 +634,7 @@ def sfw(A,B,D=None,IMAX=30,x0=None):
 
         # line search
         if IMAX > 0.5:
-            f0new, salpha = lines(stype,x,d,g,A,B)
+            f0new, salpha = lines(stype,x,d,g,A,B,D)
         else:
             salpha = 1
 

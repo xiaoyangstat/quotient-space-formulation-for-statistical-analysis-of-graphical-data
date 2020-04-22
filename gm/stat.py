@@ -17,7 +17,7 @@ from .match import permutate_adjmat,match_extended_nx
 
 
 def undirected_graphmat_to_vector(A):
-    """Convert a symmetric adjacency matrix to vector of entries above diagonal
+    """Convert a symmetric adjacency matrix to the vector of entries above diagonal
     """
     n = A.shape[0]
     p = n*(n-1)//2
@@ -52,6 +52,23 @@ def undirected_graph_to_vectors(G):
         X[i,:] = undirected_graphmat_to_vector(nx.to_numpy_matrix(G[i]))
     return X
 
+def vectorize_graph_nd(G, p, attr='v', w=1.0):
+    n = G.number_of_nodes()
+    d = np.array(G.nodes[0][attr]).size
+
+    Ne = n*(n-1)//2
+    N = Ne + n*d
+    V = np.empty(N)
+
+    A = nx.to_numpy_matrix(G)
+    A = permutate_adjmat(p,A)
+    V[:Ne] = undirected_graphmat_to_vector(A)
+    k0,k1 = Ne,Ne+d
+    for i in range(n):
+        V[k0:k1] = w*G.nodes[i][attr]
+        k0=k1; k1+=d
+    return V
+
 def vector_to_undirected_graphmat(v):
     p = np.size(v)
     n = int(np.sqrt(2*p))+1
@@ -64,6 +81,20 @@ def vector_to_undirected_graphmat(v):
         k0 = k1
     A = A+A.T
     return A
+
+def unvectorize_graph_nd(V, n,d, attr='v', w=1.0):
+    Ne = n*(n-1)//2
+#    N = Ne + n*d
+    A = vector_to_undirected_graphmat(V[:Ne])
+    G = nx.from_numpy_matrix(A)
+
+    k0,k1 = Ne,Ne+d
+    for i in range(n):
+        G.nodes[i][attr] = V[k0:k1]/w
+        k0=k1; k1+=d
+    return G
+
+## Karcher Mean
 
 def original_mean(G):
     """Compute the adjacency mean
@@ -82,10 +113,12 @@ def original_mean(G):
 
     return nx.from_numpy_matrix(np.mean(A,axis = 0))
 
-def muG_aligned(G, P, hasNumAttr=False, attr='v'):
-    """Average aligned edge graph weights and node coordinates
+def muG_aligned(G,P,num_attr=False,attr='v'):
+    """Average aligned graphs's edge weights and node attributes
 
-    In general: non-Euclidean node attributes cannot be averaged
+    Args:
+
+
     """
     N = len(G)
     n = [g.number_of_nodes() for g in G]
@@ -98,7 +131,7 @@ def muG_aligned(G, P, hasNumAttr=False, attr='v'):
     for i in range(N):
         A[i] = np.zeros((nmax,nmax))
         A[i][:n[i],:n[i]] = permutate_adjmat(P[i],nx.to_numpy_matrix(G[i]))
-        if hasNumAttr:
+        if num_attr:
             for j, nd in enumerate(G[i]):
                 if 'fict' not in G[i].nodes[j]:
                     v[j] += G[i].nodes[j][attr]
@@ -107,7 +140,7 @@ def muG_aligned(G, P, hasNumAttr=False, attr='v'):
     muA = np.mean(A,0)
     muG = nx.from_numpy_matrix(muA)
 
-    if not hasNumAttr:
+    if not num_attr:
         return muG
 
     # average node coordinate
@@ -117,6 +150,7 @@ def muG_aligned(G, P, hasNumAttr=False, attr='v'):
             muG.nodes[nd][attr] = v[nd]/vct[nd]
         else:
             dead_nodes.append(nd)
+
     if dead_nodes:
         print('dead nodes: ', dead_nodes)
 
@@ -135,12 +169,12 @@ def muG_aligned(G, P, hasNumAttr=False, attr='v'):
     muG = nx.convert_node_labels_to_integers(muG, ordering='sorted')
     for i in range(N):
         G[i] = nx.convert_node_labels_to_integers(G[i], ordering='sorted')
+
     return muG
 
-def iterative_mean_graph_ext_nx(G, mu_init=None, max_itr=30,
-                                use_node=False, w=1.0,
-                                hasNumAttr=False, attr='v',
-                                algo = 'greedy', max_hc=None):
+def iterative_mean_graph_ext_nx(G,mu_init=None,max_itr=30,two_way=False,
+                                use_node=False,w=1.0,num_attr=False,attr='v',
+                                algo='umeyama',max_hc=None):
     if mu_init is None:
         i = np.argmax([g.number_of_nodes() for g in G])
         muG = G[i].copy()
@@ -149,84 +183,61 @@ def iterative_mean_graph_ext_nx(G, mu_init=None, max_itr=30,
 
     N = len(G)
     Gp = [None]*N
-    E = [0]
+    E = [0]*(max_itr+2)
 
-    print ("First pass:")
+    print ("first pass:")
     start=time()
     P0 = []
     for k in range(N):
-        Gp[k],muG,p,d,_,_=match_extended_nx(G[k],muG,use_node=use_node,
-        w=w, attr=attr,algo = algo, max_hc=max_hc)
+        Gp[k],muG,p,d,d0=match_extended_nx(G[k],muG,two_way=two_way,
+        use_node=use_node,w=w, attr=attr,algo = algo,max_hc=max_hc)
         for nd in muG:
             if p[nd] not in G[k]:#null node of Gp
                 Gp[k].nodes[nd]['fict'] = True
         P0.append(p)
-        E[0] += d*d
-        print ("G{:d} has {:d} nodes and muG has {:d} nodes".format(k,Gp[k].number_of_nodes(),muG.number_of_nodes()))
-    print("First pass time: {:.2f}s".format(time()-start))
-    muG = muG_aligned(Gp, P0, hasNumAttr=hasNumAttr,attr=attr)
+        E[0] += d0*d0
+        E[1] += d*d
+        #print ("G{:d} has {:d} nodes and muG has {:d} nodes".format(k,Gp[k].number_of_nodes(),muG.number_of_nodes()))
+    print("first pass time: {:.2f}s".format(time()-start))
+
+    muG = muG_aligned(Gp, P0, num_attr=num_attr,attr=attr)
     mu_list = [muG.copy()]
 
     start=time()
     for m in range(max_itr):
         Ptm = []
         print ("muG numer of nodes = ", muG.number_of_nodes())
-        E.append(0)
         for k in range(N):
-            Gp[k],muG,p,d,_,_=match_extended_nx(G[k],muG,use_node=use_node,
-            w=w, attr=attr,algo = algo, max_hc=max_hc)
+            Gp[k],muG,p,d,_=match_extended_nx(G[k],muG,two_way=two_way,
+            use_node=use_node,w=w, attr=attr,algo = algo,max_hc=max_hc)
             Ptm.append(p)
             for nd in muG:
                 if p[nd] not in G[k]:
                     Gp[k].nodes[nd]['fict'] = True
-            E[-1] += d*d
-            print ("iteration: {:d}/{:d}; G{:d} has {:d} nodes and muG has {:d} nodes".format(m+1,max_itr,k,Gp[k].number_of_nodes(),muG.number_of_nodes()))
-        muG = muG_aligned(Gp, Ptm, hasNumAttr=hasNumAttr,attr=attr)
-        mu_list.append( muG.copy() )
+        E[m+2] += d*d
+            #print ("iteration: {:d}/{:d}; G{:d} has {:d} nodes and muG has {:d} nodes".format(m+1,max_itr,k,Gp[k].number_of_nodes(),muG.number_of_nodes()))
+
+        muG = muG_aligned(Gp,Ptm,num_attr=num_attr,attr=attr)
+        mu_list.append(muG.copy())
         print("Finished iteration {:d}/{:d} and time so far {:.2f}s".format(m+1,max_itr,time()-start))
+
     return muG, Gp, E, mu_list, Ptm
 
-def vectorize_graph_nd(G, p, attr='v', w=1.0):
-    n = G.number_of_nodes()
-    d = G.nodes[0][attr].size
-
-    Ne = n*(n-1)//2
-    N = Ne + n*d
-    V = np.empty(N)
-
-    A = nx.to_numpy_matrix(G)
-    A = permutate_adjmat(p,A)
-    V[:Ne] = undirected_graphmat_to_vector(A)
-    k0,k1 = Ne,Ne+d
-    for i in range(n):
-        V[k0:k1] = w*G.nodes[i][attr]
-        k0=k1; k1+=d
-    return V
-
-def unvectorize_graph_nd(V, n,d, attr='v', w=1.0):
-    Ne = n*(n-1)//2
-#    N = Ne + n*d
-    A = vector_to_undirected_graphmat(V[:Ne])
-    G = nx.from_numpy_matrix(A)
-
-    k0,k1 = Ne,Ne+d
-    for i in range(n):
-        G.nodes[i][attr] = V[k0:k1]/w
-        k0=k1; k1+=d
-    return G
+## PCA
 
 def pcaG_aligned(G, P=None, attr='v', w=1.0):
 
     nodes=[]
     for g in G:
         nodes.append(g.number_of_nodes())
-    print('nodes number are: ', nodes)
+    #print('nodes number are: ', nodes)
     if len(set(nodes))>1:
+        # two way null nodes padding is not always converged
         print('null nodes will be added')
     else:
         print('graphs are equal size')
     nmax=max(nodes)
-    d = G[0].nodes[0][attr].size
+    d = np.array(G[0].nodes[0][attr]).size
 
     V = np.empty((len(G),nmax*(nmax-1)//2+nmax*d))
 
@@ -285,8 +296,6 @@ def pca_graphs_to_scores(pca,G, attr='v', w=1.0):
     return pca.transform(V)
 
 def pca_scores_to_graphs(pca,scores,n,d, attr='v', w=1.0):
-    """
-    """
     nGraph = scores.shape[0]
     nComp = pca.components_.shape[0]
     if scores.shape[1] < nComp:
@@ -316,7 +325,9 @@ def pca_scores_to_graphs_structure(pca,scores):
         G.append( nx.from_numpy_matrix(vector_to_undirected_graphmat(V[i,:]) ))
     return G
 
-def compute_distmat(G1,G2=None,k_print=None,one_way = False,
+## distance matrix
+
+def compute_distmat(G1,G2=None,k_print=None,two_way=False,
                     use_node = False, w=1.0, attr='v',
                     algo = 'umeyama', max_hc=None):
     """Pairwise Distance in Graph Space for G1 (List) and G2 (List)
@@ -331,16 +342,15 @@ def compute_distmat(G1,G2=None,k_print=None,one_way = False,
         n2 = len(G2)
         ncmp = n1*n2
 
-    print ('Computing distmat with {:d} comparisons.'.format(ncmp))
+    print ('computing distance matrix with {:d} comparisons.'.format(ncmp))
 
     if k_print is None:
         k_print = ncmp+1
 
-    D = np.empty((n1,n2))
-    D0 = np.empty((n1,n2))
+    D = np.empty((n1,n2)) # graph distance
+    D0 = np.empty((n1,n2)) # original distance
 
     start = time()
-
     j0 = 0
     k=0
     for i in range(n1):
@@ -348,23 +358,24 @@ def compute_distmat(G1,G2=None,k_print=None,one_way = False,
             j0=i+1
             D[i,i]=0
         for j in range(j0,n2):
+            #print(i,j)
             g1 = G1[i].copy()
             g2 = G2[j].copy()
-            _,_,_,D[i,j],D0[i,j]= match_extended_nx(g1,g2,one_way=one_way,
+            _,_,_,D[i,j],D0[i,j]= match_extended_nx(g1,g2,two_way=two_way,
             w = w,use_node=use_node, attr = attr,algo = algo, max_hc=max_hc)
             if symm:
                 D[j,i] = D[i,j]
                 D0[j,i] = D0[i,j]
             k += 1
             if k%k_print==0:
-                print ('Finished {:d} of {:d} comparisons'.format(k,ncmp))
-                print ('Time so far: {:5.3f}s'.format(time()-start))
+                print ('finished {:d} of {:d} comparisons'.format(k,ncmp))
+                print ('time so far: {:5.3f}s'.format(time()-start))
 
-    print('Finished! Time so far: {:5.3f}s'.format(time()-start))
+    print('done! time so far: {:5.3f}s'.format(time()-start))
 
     return D, D0
 
-def compute_distma_paral(G1,G2=None,n_jobs=4,one_way = False,
+def compute_distma_paral(G1,G2=None,n_jobs=4,two_way=False,
                          use_node = False, w=1.0, attr='v',
                          algo = 'umeyama', max_hc=None):
     """parallel version of extended distance matrix.
@@ -392,7 +403,7 @@ def compute_distma_paral(G1,G2=None,n_jobs=4,one_way = False,
         if symm:
             j0=i+1
         result[i] = Parallel(n_jobs=n_jobs)(delayed(match_extended_nx)(G1[i].copy(),G2[j].copy(),
-              use_node = use_node, w = w,attr = attr,paral = True) for j in range(j0,n2))
+              use_node = use_node, w = w,attr = attr,paral = True,algo=algo) for j in range(j0,n2))
         print('Finish the {:d} row'.format(i))
         print('Time so far: {:5.2f}s'.format(time()-start))
 
@@ -408,9 +419,8 @@ def compute_distma_paral(G1,G2=None,n_jobs=4,one_way = False,
 
     return result, D
 
-###############################################################################
-# CLASSIFICATION WRAPPERS
-###############################################################################
+
+## Classification
 
 def svm_rbf_distmat(D_train,D_valid,D_test,
                     y_train,y_valid,y_test,
