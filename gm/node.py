@@ -27,7 +27,9 @@ def node_vec_pos(G,attr='v'):
     return pos
 
 def node_square_dists(G1,G2,attr='v',two_way=False):
-    """return a NxN matrix whose left top is n2xn1 real node distance
+    """Compute node distance matrix 
+    
+    NxN matrix whose left top is n2xn1 real node distance
     """
     n1 = G1.number_of_nodes()
     n2 = G2.number_of_nodes()
@@ -41,7 +43,9 @@ def node_square_dists(G1,G2,attr='v',two_way=False):
 
     for i in range(n1):
         for j in range(n2):
-            D[j,i] = np.sum((G1.nodes[i][attr]-G2.nodes[j][attr])**2)
+            attr1 = np.array(G1.nodes[i][attr])
+            attr2 = np.array(G2.nodes[j][attr])
+            D[j,i] = np.sum((attr1-attr2)**2)
 
     for i in range(n2,N):
         for j in range(n1):

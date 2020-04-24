@@ -134,7 +134,7 @@ def muG_aligned(G,P,num_attr=False,attr='v'):
         if num_attr:
             for j, nd in enumerate(G[i]):
                 if 'fict' not in G[i].nodes[j]:
-                    v[j] += G[i].nodes[j][attr]
+                    v[j] += np.array(G[i].nodes[j][attr])
                     vct[j] += 1
 
     muA = np.mean(A,0)
@@ -185,7 +185,7 @@ def iterative_mean_graph_ext_nx(G,mu_init=None,max_itr=30,two_way=False,
     Gp = [None]*N
     E = [0]*(max_itr+2)
 
-    print ("first pass:")
+    print(f"first pass: muG has {muG.number_of_nodes()} nodes")
     start=time()
     P0 = []
     for k in range(N):
@@ -206,7 +206,7 @@ def iterative_mean_graph_ext_nx(G,mu_init=None,max_itr=30,two_way=False,
     start=time()
     for m in range(max_itr):
         Ptm = []
-        print ("muG numer of nodes = ", muG.number_of_nodes())
+        print(f"starting iteration {m+1}/{max_itr}, muG has {muG.number_of_nodes()} nodes")
         for k in range(N):
             Gp[k],muG,p,d,_=match_extended_nx(G[k],muG,two_way=two_way,
             use_node=use_node,w=w, attr=attr,algo = algo,max_hc=max_hc)
@@ -219,7 +219,7 @@ def iterative_mean_graph_ext_nx(G,mu_init=None,max_itr=30,two_way=False,
 
         muG = muG_aligned(Gp,Ptm,num_attr=num_attr,attr=attr)
         mu_list.append(muG.copy())
-        print("Finished iteration {:d}/{:d} and time so far {:.2f}s".format(m+1,max_itr,time()-start))
+        print("finished iteration {:d}/{:d} and time so far {:.2f}s".format(m+1,max_itr,time()-start))
 
     return muG, Gp, E, mu_list, Ptm
 
@@ -327,10 +327,14 @@ def pca_scores_to_graphs_structure(pca,scores):
 
 ## distance matrix
 
-def compute_distmat(G1,G2=None,k_print=None,two_way=False,
-                    use_node = False, w=1.0, attr='v',
+def compute_distmat(G1,G2=None,two_way=False,k_print=None,
+                    use_node=False, w=1.0, attr='v',
                     algo = 'umeyama', max_hc=None):
-    """Pairwise Distance in Graph Space for G1 (List) and G2 (List)
+    """Compute pairwise distance matrix in Graph Space for G1 (List) and G2 (List)
+    
+    Returns:
+        D: graph distance matrix
+        D0: original distance matrix
     """
     n1 = len(G1)
     symm = (G2 is None)
@@ -375,9 +379,9 @@ def compute_distmat(G1,G2=None,k_print=None,two_way=False,
 
     return D, D0
 
-def compute_distma_paral(G1,G2=None,n_jobs=4,two_way=False,
-                         use_node = False, w=1.0, attr='v',
-                         algo = 'umeyama', max_hc=None):
+def compute_distmat_paral(G1,G2=None,n_jobs=4,two_way=False,
+                         use_node=False,w=1.0,attr='v',
+                         algo='umeyama',max_hc=None):
     """parallel version of extended distance matrix.
     """
     n1 = len(G1)
@@ -390,22 +394,20 @@ def compute_distma_paral(G1,G2=None,n_jobs=4,two_way=False,
         n2 = len(G2)
         ncmp = n1*n2
 
-    print ('Computing distmat with {:d} comparisons.'.format(ncmp))
+    print (f'parallel computing distmat with {ncmp} comparisons using {n_jobs} cores')
 
     j0 = 0
     result=[None]*n1
-
-    print('Need run {:d} rows.'.format(n1))
-    print('Parallel n_jobs = ', n_jobs)
-
     start = time()
     for i in range(n1):
+        if i%(n1/5)==0: 
+            print(f'computing row {i+1}/{n1}')
         if symm:
             j0=i+1
         result[i] = Parallel(n_jobs=n_jobs)(delayed(match_extended_nx)(G1[i].copy(),G2[j].copy(),
-              use_node = use_node, w = w,attr = attr,paral = True,algo=algo) for j in range(j0,n2))
-        print('Finish the {:d} row'.format(i))
-        print('Time so far: {:5.2f}s'.format(time()-start))
+              use_node=use_node,w = w,attr = attr,paral=True,algo=algo) for j in range(j0,n2))
+    
+    print('done! time so far: {:5.3f}s'.format(time()-start))
 
     ##
     D = np.full((n1,n2),0)
@@ -417,7 +419,7 @@ def compute_distma_paral(G1,G2=None,n_jobs=4,two_way=False,
     else:
         D = np.array(result)
 
-    return result, D
+    return D
 
 
 ## Classification
@@ -425,24 +427,27 @@ def compute_distma_paral(G1,G2=None,n_jobs=4,two_way=False,
 def svm_rbf_distmat(D_train,D_valid,D_test,
                     y_train,y_valid,y_test,
                     C_vec,gam_vec):
+    #For kernel=”precomputed”, the expected shape of X is [n_samples_test, n_samples_train]
+    n_train = D_train.shape[0]
+    if D_valid.shape[1]!=n_train:
+        D_valid = D_valid.T
+    if D_test.shape[1]!=n_train:
+        D_test = D_test.T
+    
     N_C = C_vec.size
     N_gamma = gam_vec.size
-
+    
     acc_grid = np.empty((N_C,N_gamma))
-
-    n_svc = N_C*N_gamma
-    k = 0
-    print ('Fitting {:d} models...'.format(n_svc))
+    
+    print ('fitting {:d} models...'.format(N_C*N_gamma))
     for i in range(N_C):
         C = C_vec[i]
         for j in range(N_gamma):
             gamma = gam_vec[j]
-            k += 1
-            print ('Fitting with C={:f}, gamma={:f} ({:d} of {:d})'.format(C,gamma,k,n_svc))
-
+            
             Grbf_train = np.exp(-gamma*D_train**2)
             Grbf_valid = np.exp(-gamma*D_valid**2)
-
+            
             svc = SVC(C=C,kernel='precomputed',class_weight='balanced')
             svc.fit(Grbf_train,y_train)
             y_valid_pred = svc.predict(Grbf_valid)

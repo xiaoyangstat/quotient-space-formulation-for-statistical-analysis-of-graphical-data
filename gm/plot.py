@@ -110,8 +110,8 @@ def draw_weighted(W, title='', pos=None, width_factor=1,
         pos = graphviz_layout(Wthr, prog=prog, args=args)
     if draw:
         plt.title(title,fontdict = {'fontsize' : 20,'weight':'bold','color':'navy'})
-        nx.draw_networkx(Wthr,pos, edgelist=E1,width=wd1,
-                         with_labels=with_labels, labels=nodeDict,node_color='skyblue',
+        nx.draw_networkx(Wthr,pos,edgelist=E1,width=wd1,
+                         with_labels=with_labels,labels=nodeDict,node_color='skyblue',
                          **kwargs)
         if thr2<thr:
             nx.draw_networkx_edges(Wthr,pos,edgelist=E2,width=wd2,style='dashed')

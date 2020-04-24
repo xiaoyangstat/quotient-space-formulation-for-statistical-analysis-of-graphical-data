@@ -114,6 +114,7 @@ def load_gxl_protein(path,names):
     return G
 
 ## the following codes are copied/modified from: https://github.com/tvayer/FGW
+
 def per_section(it, is_delimiter=lambda x: x.isspace()):
     ret = []
     for line in it:
@@ -165,11 +166,41 @@ def node_labels_dic(path,name):
             k=k+1
     return node_dic
 
+def compute_weighted_adjency(path,name1,name2):
+    adjency ={}
+    with open(path+name1) as f1:
+        with open(path+name2) as f2:
+            sections1 = list(per_section(f1))
+            sections2 = list(per_section(f2))
+            for i,elt in enumerate(sections1[0]):
+                adjency[(int(elt.split(',')[0]),int(elt.split(',')[1]))]=int(sections2[0][i].split(',')[0])
+    return adjency
+
+def node_attr_dic(path,name):
+    node_dic=dict()
+    with open(path+name) as f:
+        sections = list(per_section(f))
+        k=1
+        for elt in sections[0]:
+            node_dic[k]=[float(x) for x in elt.split(',')]
+            k=k+1
+    return node_dic
+
+def indices_to_one_hot(number, nb_classes,label_dummy=-1):
+    """Convert an iterable of indices to one-hot encoded labels."""
+    
+    if number==label_dummy:
+        return np.zeros(nb_classes)
+    else:
+        return np.eye(nb_classes)[number]
+
 def build_MUTAG_dataset(path,one_hot=False):
     graphs=graph_label_list(path,'MUTAG_graph_labels.txt') # id and label
     adjency=compute_adjency(path,'MUTAG_A.txt')
     data_dict=graph_indicator(path,'MUTAG_graph_indicator.txt')
     node_dic=node_labels_dic(path,'MUTAG_node_labels.txt') # ya aussi des nodes attributes ! The fuck ?
+    edge_dic=compute_weighted_adjency(path,'MUTAG_A.txt','MUTAG_edge_labels.txt')
+    edge_dic_transform = {0:1.5,1:1,2:2,3:3}
 
     data=[]
     for i in graphs:
@@ -183,7 +214,7 @@ def build_MUTAG_dataset(path,one_hot=False):
             else:
                 g.nodes[node]['attr'] = node_dic[node]
             for node2 in adjency[node]:
-                g.add_edge(node,node2)
+                g.add_edge(node,node2,weight=edge_dic_transform[edge_dic[(node,node2)]])
 
         g = nx.convert_node_labels_to_integers(g)
         data.append((g,i[1]))
@@ -216,4 +247,54 @@ def build_BZR_dataset(path,type_attr='label',use_node_deg=False):
         g = nx.convert_node_labels_to_integers(g)
         data.append((g,i[1]))
 
+    return data
+
+
+def build_ENZYMES_dataset(path,type_attr='label',use_node_deg=False):
+    graphs=graph_label_list(path,'ENZYMES_graph_labels.txt')
+    if type_attr=='label':
+        node_dic=node_labels_dic(path,'ENZYMES_node_labels.txt') # A voir pour les attributes
+    if type_attr=='real':
+        node_dic=node_attr_dic(path,'ENZYMES_node_attributes.txt')
+    adjency=compute_adjency(path,'ENZYMES_A.txt')
+    data_dict=graph_indicator(path,'ENZYMES_graph_indicator.txt')
+    data=[]
+    for i in graphs:
+        g=nx.Graph()
+        for node in data_dict[i[0]]:
+            g.graph['id'] = i[0]
+            g.add_node(node)
+            if not use_node_deg:
+                g.nodes[node]['attr'] = node_dic[node]
+            for node2 in adjency[node]:
+                g.add_edge(node,node2)
+        if use_node_deg:
+            node_degree_dict=dict(g.nx_graph.degree())
+            normalized_node_degree_dict={k:v/len(g.nx_graph.nodes()) for k,v in node_degree_dict.items() }
+            nx.set_node_attributes(g.nx_graph,normalized_node_degree_dict,'attr_name')
+        g = nx.convert_node_labels_to_integers(g)
+        data.append((g,i[1]))
+
+    return data
+
+def build_IMDB_dataset(path,s='MULTI',use_node_deg=False):
+    graphs=graph_label_list(path,'IMDB-'+s+'_graph_labels.txt')
+    adjency=compute_adjency(path,'IMDB-'+s+'_A.txt')
+    data_dict=graph_indicator(path,'IMDB-'+s+'_graph_indicator.txt')
+
+    data=[]
+    for i in graphs:
+        g=nx.Graph()
+        for node in data_dict[i[0]]:
+            g.graph['id'] = i[0]
+            g.add_node(node)
+            for node2 in adjency[node]:
+                g.add_edge(node,node2)
+        if use_node_deg:
+            node_degree_dict=dict(g.nx_graph.degree())
+            normalized_node_degree_dict={k:v/len(g.nx_graph.nodes()) for k,v in node_degree_dict.items() }
+            nx.set_node_attributes(g.nx_graph,normalized_node_degree_dict,'attr_name')
+        g = nx.convert_node_labels_to_integers(g)
+        data.append((g,i[1]))
+        
     return data
