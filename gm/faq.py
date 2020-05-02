@@ -26,7 +26,11 @@ def assign(A, munk=True):
         p,w,x = maxassign_linprog(A.transpose())
         p = p.transpose()
     else:
-        #p,w,v,u,costMat = lapjv(-A.transpose(), 0.01) # from original implementation, need debug
+        ##debug##
+        # import scipy.io as sio
+        # sio.savemat('test.mat', {'d':A})
+        ##
+        #p,w,v,u,costMat = lapjv(-A.transpose(), 0.01) # from original implementation
         costMat, p, w = lap.lapjv(-A.transpose()) # from https://github.com/gatagat/lap
         w = -1*w
         x = perm2mat(p)
@@ -139,7 +143,6 @@ def maxassign_linprog(C):
     if m > n:
         raise ValueError('Matrix cannot have more rows than columns')
 
-    n2 = n*n
     # put in zeros to square out matrix so as not
     # to affect the score or assignment
     C = np.vstack((C,np.zeros((n-m,n))))
@@ -186,7 +189,8 @@ def lines(ltype,x,d,g,A,B,D):
     dxg = (d.transpose()@g)[0,0]
 
     if dxg > 0:
-        print("warning: Nonimproving Direction, <d,g> = %g\n" % dxg)
+        message = 'Nonimproving Direction, <d,g> = {}'.format(dxg)
+        warnings.warn(message)
 
     if ltype == 0:
         salpha = 1
@@ -329,7 +333,6 @@ def lapjv(costMat, resolution=None):
         assignments. The default is eps.
 
     """
-
     if resolution==None:
         resolution = np.spacing(costMat.max())
 
@@ -352,38 +355,38 @@ def lapjv(costMat, resolution=None):
 
     costMat[costMat==np.Inf] = maxcost
     v = np.zeros((1,dim))
-    rowsol = np.zeros((1,dim), dtype=np.int)-2
-    colsol = np.zeros((1,dim), dtype=np.int)-2
-
+    rowsol = np.zeros((1,dim), dtype=np.int)-1
+    colsol = np.zeros((1,dim), dtype=np.int)-1
+    
     if costMat.std(ddof=1) < costMat.mean():
         numfree = -1
-        free = np.zeros((dim,1), dtype=np.int)
-        matches = np.zeros((dim,1), dtype=np.int)
+        free = np.zeros((1,dim), dtype=np.int)-1
+        matches = np.zeros((1,dim), dtype=np.int)
 
         # reverse order gives better results
         for j in range(dim-1,-1,-1):
             v[0,j] = costMat[:,j].min()
             imin = costMat[:,j].argmin()
-            if not matches[imin]:
+            if not matches[0,imin]:
                 rowsol[0,imin] = j
                 colsol[0,j] = imin
             elif v[0,j] < v[0,rowsol[0,imin]]:
-                j1 = rowsol[imin]
-                rowsol[imin] = j
+                j1 = rowsol[0,imin]
+                rowsol[0,imin] = j
                 colsol[0,j] = imin
                 colsol[0,j1] = -1
             else:
                 colsol[0,j] = -1
 
-            matches[imin] += 1
+            matches[0,imin] += 1
 
         # reduction transfer from unassigned to assigned rows
         for i in range(0,dim):
-            if not matches[i]:
+            if not matches[0,i]:
                 numfree += 1
-                free[numfree] = i
+                free[0,numfree] = i
             else:
-                if matches[i] == 1:
+                if matches[0,i] == 1:
                     j1 = rowsol[0,i]
                     x = costMat[i,:] - v
                     x = x.reshape((1,-1))
@@ -401,6 +404,7 @@ def lapjv(costMat, resolution=None):
         rowsol[0,imin] = j
         colsol[0,j] = imin
         free = np.delete(free,imin)
+        free = free.reshape((1,-1))
         x = costMat[imin,:] - v
         x = x.reshape((1,-1))
         x[0,j] = maxcost
@@ -418,7 +422,7 @@ def lapjv(costMat, resolution=None):
         numfree = 0
         while k < prvnumfree:
             k += 1
-            i = free[k-1]
+            i = free[0,k-1]
             # find minimum and second minimum reduced cost over columns
             x = costMat[i,:] - v
             umin = x.min()
@@ -433,28 +437,30 @@ def lapjv(costMat, resolution=None):
                 # reduced cost in the row to the subminimum
                 v[0,j1] = v[0,j1] - (usubmin - umin)
             else:
-                if i0 > -1:
+                if i0 >= 0:
                     j1 = j2
                     i0 = colsol[0,j2]
 
             # reassign i to j1, possibly de-assigning an i0
             rowsol[0,i] = j1
             colsol[0,j1] = i
-            if i0 > -1 :
+            if i0 >= 0 :
                 if (usubmin - umin) > resolution:
                     # put in current k, and go back to that k
-                    free[k-1] = i0
+                    free[0,k-1] = i0
                     k -= 1
                 else:
+                    # print(k,numfree)
                     numfree += 1
-                    free[numfree-1] = i0
+                    free[0,numfree-1] = i0
     # augmentation phase
     for f in range(0,numfree):
-        #print('f',f,colsol)
-        freerow = free[f]
+        # print('f',f,free)
+        freerow = free[0,f]
         d = costMat[freerow,:] - v
         pred = freerow*np.ones((1,dim))
-        collist = np.arange(0,dim)
+        collist = np.arange(0,dim).reshape((1,-1))
+        # print('collist',collist)
         low = 0
         up = 0
         unassignedfound = False
@@ -462,42 +468,43 @@ def lapjv(costMat, resolution=None):
             if up == low:
                 last = low - 1
                 d = d.reshape((1,-1))
-                print(collist,up)
-                minh = d[0,collist[up]]
+                minh = d[0,collist[0,up]]
                 up += 1
                 for k in range(up,dim):
-                    j = collist[k]
+                    j = collist[0,k]
                     h = d[0,j]
                     if h <= minh:
                         if h < minh:
                             up = low
                             minh = h
 
-                        collist[k] = collist[up]
-                        collist[up] = j
+                        collist[0,k] = collist[0,up]
+                        collist[0,up] = j
                         up += 1
 
                 # check if any of the min col are unassigned
                 for k in range(low,up):
-                    if colsol[0,collist[k]] < -1:
-                        endofpath = collist[k]
+                    if colsol[0,collist[0,k]] < 0:
+                        endofpath = collist[0,k]
                         unassignedfound = True
                         break
             if not unassignedfound:
                 # update distances between freerow and all unscanned columns
                 # via next scanned column
-                j1 = collist[low]
+                j1 = collist[0,low]
                 low += 1
                 i = colsol[0,j1]
                 x = costMat[i,:] - v
                 h = x[0,j1] - minh
                 xh = x - h
                 k = np.arange(up,dim)
-                j = collist[k]
+                j = collist[0,k]
                 vf0 = xh < d
                 vf = vf0[0,j]
                 j = j.reshape((1,-1))
+                # print('j',j)
                 vj = j[0,np.ravel(vf)]
+                vj = vj.reshape((1,-1))
                 k = k.reshape((1,-1))
                 vk = k[0,np.ravel(vf)]
                 pred[0,vj] = i
@@ -516,14 +523,15 @@ def lapjv(costMat, resolution=None):
                 else:
                     i2 = cf.size + 1
                 for k in range(0,i2-1):
-                    collist[k2[k]] = collist[up]
-                    collist[up] = j2[k]
+                    collist[0,k2[k]] = collist[0,up]
+                    collist[0,up] = j2[k]
                     up += 1
 
         # update column prices
         j1 = collist[0:(last+1)]
         v[0,j1] = v[0,j1] + d[0,j1] - minh
         # reset row and column assignments along the alternating path
+        # print(pred,freerow)
         while True:
             i = pred[0,endofpath]
             colsol[0,endofpath] = i
@@ -532,12 +540,14 @@ def lapjv(costMat, resolution=None):
             rowsol[0,int(i)]=j1
             if (i == freerow):
                 break
+            
+        # print(collist)
 
     rowsol = rowsol[0,0:rdim]
     tmpv = v[0,rowsol]
     u = np.diag(costMat[:,rowsol]) - tmpv.transpose()
     u = u[0:rdim]
-    v = v[0:rdim]
+    v = v[0:cdim]
     cost = u.sum()+np.sum(v[0,rowsol])
     costMat = costMat[0:rdim,0:cdim]
     utmp = np.matlib.repmat(u,cdim,1).transpose()
@@ -617,7 +627,6 @@ def sfw(A,B,D=None,IMAX=30,x0=None):
     myps = np.empty((np.int(np.ceil(IMAX)),n))
     myps.fill(np.nan)
     while ((iter < IMAX) and (stop == 0)):
-        #print(iter)
         # fun + grad
         f0,g = fungrad(x,A,B,D)
         g1 = g[0:n**2] + g[(n**2):]

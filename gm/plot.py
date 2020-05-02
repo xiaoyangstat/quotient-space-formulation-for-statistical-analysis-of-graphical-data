@@ -42,7 +42,7 @@ def remove_no_pos_nodes(G,pos):
             g.remove_node(nd)
     return g
 
-def remove_weak_nodes(G,thr=0, verbose = False):
+def remove_weak_nodes(G,thr=0,verbose=False):
     """remove weak nodes of G
 
     Args:
@@ -54,24 +54,22 @@ def remove_weak_nodes(G,thr=0, verbose = False):
 
     G1=G.copy()
 
-    for i in G.nodes:
-        E=G.edges(i,data=True)
-        if sum([abs(d['weight']) for (u,v,d) in E if u!=v])<thr:
-            if verbose:
-                print('found weak node: ',i)
-            G1.remove_node(i)
-    G2=G1.copy()
+    for (u,v,d) in G.edges(data=True):
+        if d['weight']<thr:
+            G1.edges[u,v]['weight']=0
+            G1.remove_edge(u,v)
 
     if verbose:
-        print('removed {:.2f}% weak edges'.format(100-100*len(G2.edges)/len(G.edges)))
+        print('removed {:.2f}% weak edges'.format(100-100*len(G1.edges)/len(G.edges)))
 
-    for i in nx.isolates(G1):
-        G2.remove_node(i)
-    return G2
+    G2 = G1.copy()
+    for i in nx.isolates(G2):
+        G1.remove_node(i)
+    return G1
 
 def draw_weighted(W, title='', pos=None, width_factor=1,
                   thr=-1, thr2=None, draw=True, prog='neato', args='',
-                  return_pos = False,label_name=None,**kwargs):
+                  return_pos=False,label_name=None,**kwargs):
     if thr2 is None:
         thr2=thr
     else:
@@ -109,7 +107,7 @@ def draw_weighted(W, title='', pos=None, width_factor=1,
     if pos is None:
         pos = graphviz_layout(Wthr, prog=prog, args=args)
     if draw:
-        plt.title(title,fontdict = {'fontsize' : 20,'weight':'bold','color':'navy'})
+        plt.title(title,fontdict={'fontsize':30,'weight':'bold','color':'navy'})
         nx.draw_networkx(Wthr,pos,edgelist=E1,width=wd1,
                          with_labels=with_labels,labels=nodeDict,node_color='skyblue',
                          **kwargs)

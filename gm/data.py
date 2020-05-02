@@ -193,8 +193,31 @@ def indices_to_one_hot(number, nb_classes,label_dummy=-1):
         return np.zeros(nb_classes)
     else:
         return np.eye(nb_classes)[number]
+    
+def build_IMDB_dataset(path,s='MULTI',use_node_deg=False):
+    graphs=graph_label_list(path,'IMDB-'+s+'_graph_labels.txt')
+    adjency=compute_adjency(path,'IMDB-'+s+'_A.txt')
+    data_dict=graph_indicator(path,'IMDB-'+s+'_graph_indicator.txt')
 
-def build_MUTAG_dataset(path,one_hot=False):
+    data=[]
+    for i in graphs:
+        g=nx.Graph()
+        for node in data_dict[i[0]]:
+            g.graph['id'] = i[0]
+            g.add_node(node)
+            for node2 in adjency[node]:
+                g.add_edge(node,node2)
+        if use_node_deg:
+            node_degree_dict=dict(g.nx_graph.degree())
+            normalized_node_degree_dict={k:v/len(g.nx_graph.nodes()) for k,v in node_degree_dict.items() }
+            nx.set_node_attributes(g.nx_graph,normalized_node_degree_dict,'attr_name')
+        g = nx.convert_node_labels_to_integers(g)
+        data.append((g,i[1]))
+        
+    return data
+
+
+def build_MUTAG_dataset(path,one_hot=True):
     graphs=graph_label_list(path,'MUTAG_graph_labels.txt') # id and label
     adjency=compute_adjency(path,'MUTAG_A.txt')
     data_dict=graph_indicator(path,'MUTAG_graph_indicator.txt')
@@ -225,8 +248,11 @@ def build_MUTAG_dataset(path,one_hot=False):
 def build_BZR_dataset(path,type_attr='label',use_node_deg=False):
     graphs=graph_label_list(path,'BZR_graph_labels.txt')
     if type_attr=='label':
+        one_hot=True
         node_dic=node_labels_dic(path,'BZR_node_labels.txt') # A voir pour les attributes
+        node2vec=dict(zip([1,6,7,8,9,15,16,17,35,53],range(10)))
     if type_attr=='real':
+        one_hot=False
         node_dic=node_attr_dic(path,'BZR_node_attributes.txt')
     adjency=compute_adjency(path,'BZR_A.txt')
     data_dict=graph_indicator(path,'BZR_graph_indicator.txt')
@@ -237,7 +263,11 @@ def build_BZR_dataset(path,type_attr='label',use_node_deg=False):
             g.graph['id'] = i[0]
             g.add_node(node)
             if not use_node_deg:
-                g.nodes[node]['attr'] = node_dic[node]
+                if one_hot:
+                    attr=indices_to_one_hot(node2vec[node_dic[node]],10)
+                else:
+                    attr=node_dic[node]
+                g.nodes[node]['attr'] = attr
             for node2 in adjency[node]:
                 g.add_edge(node,node2)
         if use_node_deg:
@@ -253,8 +283,11 @@ def build_BZR_dataset(path,type_attr='label',use_node_deg=False):
 def build_ENZYMES_dataset(path,type_attr='label',use_node_deg=False):
     graphs=graph_label_list(path,'ENZYMES_graph_labels.txt')
     if type_attr=='label':
+        one_hot=True
         node_dic=node_labels_dic(path,'ENZYMES_node_labels.txt') # A voir pour les attributes
+        node2vec=dict(zip([1,2,3],range(3)))
     if type_attr=='real':
+        one_hot=False
         node_dic=node_attr_dic(path,'ENZYMES_node_attributes.txt')
     adjency=compute_adjency(path,'ENZYMES_A.txt')
     data_dict=graph_indicator(path,'ENZYMES_graph_indicator.txt')
@@ -265,7 +298,11 @@ def build_ENZYMES_dataset(path,type_attr='label',use_node_deg=False):
             g.graph['id'] = i[0]
             g.add_node(node)
             if not use_node_deg:
-                g.nodes[node]['attr'] = node_dic[node]
+                if one_hot:
+                    attr=indices_to_one_hot(node2vec[node_dic[node]],len(node2vec))
+                else:
+                    attr=node_dic[node]
+                g.nodes[node]['attr'] = attr
             for node2 in adjency[node]:
                 g.add_edge(node,node2)
         if use_node_deg:
@@ -277,17 +314,29 @@ def build_ENZYMES_dataset(path,type_attr='label',use_node_deg=False):
 
     return data
 
-def build_IMDB_dataset(path,s='MULTI',use_node_deg=False):
-    graphs=graph_label_list(path,'IMDB-'+s+'_graph_labels.txt')
-    adjency=compute_adjency(path,'IMDB-'+s+'_A.txt')
-    data_dict=graph_indicator(path,'IMDB-'+s+'_graph_indicator.txt')
 
+def build_PROTEIN_dataset(path,type_attr='label',use_node_deg=False):
+    if type_attr=='label':
+        one_hot=True
+        node_dic=node_labels_dic(path,'PROTEINS_full_node_labels.txt') # A voir pour les attributes
+    if type_attr=='real':
+        one_hot=False
+        node_dic=node_attr_dic(path,'PROTEINS_full_node_attributes.txt')
+    graphs=graph_label_list(path,'PROTEINS_full_graph_labels.txt')
+    adjency=compute_adjency(path,'PROTEINS_full_A.txt')
+    data_dict=graph_indicator(path,'PROTEINS_full_graph_indicator.txt')
     data=[]
     for i in graphs:
         g=nx.Graph()
         for node in data_dict[i[0]]:
             g.graph['id'] = i[0]
             g.add_node(node)
+            if not use_node_deg:
+                if one_hot:
+                    attr=indices_to_one_hot(node_dic[node],3)
+                else:
+                    attr=node_dic[node]
+                g.nodes[node]['attr'] = attr
             for node2 in adjency[node]:
                 g.add_edge(node,node2)
         if use_node_deg:
@@ -296,5 +345,86 @@ def build_IMDB_dataset(path,s='MULTI',use_node_deg=False):
             nx.set_node_attributes(g.nx_graph,normalized_node_degree_dict,'attr_name')
         g = nx.convert_node_labels_to_integers(g)
         data.append((g,i[1]))
-        
+
+    return data
+
+def build_PTC_FM_dataset(path,one_hot=True):
+    graphs=graph_label_list(path,'PTC_FM_graph_labels.txt') # id and label
+    adjency=compute_adjency(path,'PTC_FM_A.txt')
+    data_dict=graph_indicator(path,'PTC_FM_graph_indicator.txt')
+    node_dic=node_labels_dic(path,'PTC_FM_node_labels.txt') # ya aussi des nodes attributes ! The fuck ?
+    edge_dic=compute_weighted_adjency(path,'PTC_FM_A.txt','PTC_FM_edge_labels.txt')
+    edge_dic_transform = {0:3,1:1,2:2,3:1.5}
+
+    data=[]
+    for i in graphs:
+        g=nx.Graph()
+        for node in data_dict[i[0]]:
+            g.graph['id'] = i[0]
+            g.add_node(node)
+            if one_hot:
+                attr=indices_to_one_hot(node_dic[node],18)
+                g.nodes[node]['attr'] = attr
+            else:
+                g.nodes[node]['attr'] = node_dic[node]
+            for node2 in adjency[node]:
+                g.add_edge(node,node2,weight=edge_dic_transform[edge_dic[(node,node2)]])
+
+        g = nx.convert_node_labels_to_integers(g)
+        data.append((g,i[1]))
+
+    return data
+
+def build_PTC_FR_dataset(path,one_hot=True):
+    graphs=graph_label_list(path,'PTC_FR_graph_labels.txt') # id and label
+    adjency=compute_adjency(path,'PTC_FR_A.txt')
+    data_dict=graph_indicator(path,'PTC_FR_graph_indicator.txt')
+    node_dic=node_labels_dic(path,'PTC_FR_node_labels.txt') # ya aussi des nodes attributes ! The fuck ?
+    edge_dic=compute_weighted_adjency(path,'PTC_FR_A.txt','PTC_FR_edge_labels.txt')
+    edge_dic_transform = {0:3,1:2,2:1,3:1.5}
+
+    data=[]
+    for i in graphs:
+        g=nx.Graph()
+        for node in data_dict[i[0]]:
+            g.graph['id'] = i[0]
+            g.add_node(node)
+            if one_hot:
+                attr=indices_to_one_hot(node_dic[node],19)
+                g.nodes[node]['attr'] = attr
+            else:
+                g.nodes[node]['attr'] = node_dic[node]
+            for node2 in adjency[node]:
+                g.add_edge(node,node2,weight=edge_dic_transform[edge_dic[(node,node2)]])
+
+        g = nx.convert_node_labels_to_integers(g)
+        data.append((g,i[1]))
+
+    return data
+
+def build_PTC_MR_dataset(path,one_hot=True):
+    graphs=graph_label_list(path,'PTC_MR_graph_labels.txt') # id and label
+    adjency=compute_adjency(path,'PTC_MR_A.txt')
+    data_dict=graph_indicator(path,'PTC_MR_graph_indicator.txt')
+    node_dic=node_labels_dic(path,'PTC_MR_node_labels.txt') # ya aussi des nodes attributes ! The fuck ?
+    edge_dic=compute_weighted_adjency(path,'PTC_MR_A.txt','PTC_MR_edge_labels.txt')
+    edge_dic_transform = {0:3,1:2,2:1,3:1.5}
+
+    data=[]
+    for i in graphs:
+        g=nx.Graph()
+        for node in data_dict[i[0]]:
+            g.graph['id'] = i[0]
+            g.add_node(node)
+            if one_hot:
+                attr=indices_to_one_hot(node_dic[node],18)
+                g.nodes[node]['attr'] = attr
+            else:
+                g.nodes[node]['attr'] = node_dic[node]
+            for node2 in adjency[node]:
+                g.add_edge(node,node2,weight=edge_dic_transform[edge_dic[(node,node2)]])
+
+        g = nx.convert_node_labels_to_integers(g)
+        data.append((g,i[1]))
+
     return data

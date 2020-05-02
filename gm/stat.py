@@ -11,6 +11,7 @@ from time import time
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score
 from sklearn.decomposition import PCA
+from sklearn.model_selection import StratifiedKFold
 from joblib import Parallel,delayed
 
 from .match import permutate_adjmat,match_extended_nx
@@ -52,7 +53,7 @@ def undirected_graph_to_vectors(G):
         X[i,:] = undirected_graphmat_to_vector(nx.to_numpy_matrix(G[i]))
     return X
 
-def vectorize_graph_nd(G, p, attr='v', w=1.0):
+def vectorize_graph_nd(G,p,attr='v',w=1.0):
     n = G.number_of_nodes()
     d = np.array(G.nodes[0][attr]).size
 
@@ -63,10 +64,12 @@ def vectorize_graph_nd(G, p, attr='v', w=1.0):
     A = nx.to_numpy_matrix(G)
     A = permutate_adjmat(p,A)
     V[:Ne] = undirected_graphmat_to_vector(A)
+
     k0,k1 = Ne,Ne+d
     for i in range(n):
         V[k0:k1] = w*G.nodes[i][attr]
         k0=k1; k1+=d
+
     return V
 
 def vector_to_undirected_graphmat(v):
@@ -190,7 +193,7 @@ def iterative_mean_graph_ext_nx(G,mu_init=None,max_itr=30,two_way=False,
     P0 = []
     for k in range(N):
         Gp[k],muG,p,d,d0=match_extended_nx(G[k],muG,two_way=two_way,
-        use_node=use_node,w=w, attr=attr,algo = algo,max_hc=max_hc)
+        use_node=use_node,w=w,attr=attr,algo=algo,max_hc=max_hc)
         for nd in muG:
             if p[nd] not in G[k]:#null node of Gp
                 Gp[k].nodes[nd]['fict'] = True
@@ -209,7 +212,7 @@ def iterative_mean_graph_ext_nx(G,mu_init=None,max_itr=30,two_way=False,
         print(f"starting iteration {m+1}/{max_itr}, muG has {muG.number_of_nodes()} nodes")
         for k in range(N):
             Gp[k],muG,p,d,_=match_extended_nx(G[k],muG,two_way=two_way,
-            use_node=use_node,w=w, attr=attr,algo = algo,max_hc=max_hc)
+            use_node=use_node,w=w,attr=attr,algo=algo,max_hc=max_hc)
             Ptm.append(p)
             for nd in muG:
                 if p[nd] not in G[k]:
@@ -225,7 +228,7 @@ def iterative_mean_graph_ext_nx(G,mu_init=None,max_itr=30,two_way=False,
 
 ## PCA
 
-def pcaG_aligned(G, P=None, attr='v', w=1.0):
+def pcaG_aligned(G,P=None,attr='v',w=1.0):
 
     nodes=[]
     for g in G:
@@ -249,19 +252,19 @@ def pcaG_aligned(G, P=None, attr='v', w=1.0):
         else:
             p = P[i]
 
-        V[i,:] = vectorize_graph_nd(g, p, attr=attr, w=w)
+        V[i,:] = vectorize_graph_nd(g,p,attr=attr, w=w)
 
     pca = PCA()
     scores = pca.fit_transform(V)
     return pca,scores, V
 
-def pcaG_aligned_edge(Gp, P=None):
+def pcaG_aligned_edge(Gp,P=None):
     """PCA for aligned graphs, edge only
     """
     nodes=[]
     for g in Gp:
         nodes.append(g.number_of_nodes())
-    print('nodes number are: ', nodes)
+    #print('nodes number are: ', nodes)
     if len(set(nodes))>1:
         print('null nodes will be added')
     nmax=max(nodes)
@@ -295,7 +298,7 @@ def pca_graphs_to_scores(pca,G, attr='v', w=1.0):
             V[i,:] = Vi
     return pca.transform(V)
 
-def pca_scores_to_graphs(pca,scores,n,d, attr='v', w=1.0):
+def pca_scores_to_graphs(pca,scores,n,d,attr='v',w=1.0):
     nGraph = scores.shape[0]
     nComp = pca.components_.shape[0]
     if scores.shape[1] < nComp:
@@ -327,9 +330,8 @@ def pca_scores_to_graphs_structure(pca,scores):
 
 ## distance matrix
 
-def compute_distmat(G1,G2=None,two_way=False,k_print=None,
-                    use_node=False, w=1.0, attr='v',
-                    algo = 'umeyama', max_hc=None):
+def compute_distmat(G1,G2=None,two_way=False,use_node=False,w=1.0, attr='v',
+                    algo='faq',max_hc=None):
     """Compute pairwise distance matrix in Graph Space for G1 (List) and G2 (List)
     
     Returns:
@@ -348,16 +350,14 @@ def compute_distmat(G1,G2=None,two_way=False,k_print=None,
 
     print ('computing distance matrix with {:d} comparisons.'.format(ncmp))
 
-    if k_print is None:
-        k_print = ncmp+1
-
     D = np.empty((n1,n2)) # graph distance
     D0 = np.empty((n1,n2)) # original distance
 
     start = time()
     j0 = 0
-    k=0
     for i in range(n1):
+        if (i+1)%(n1/5)==0: 
+            print(f'computing row {i+1}/{n1}, time so far: {time()-start}')
         if symm:
             j0=i+1
             D[i,i]=0
@@ -366,22 +366,16 @@ def compute_distmat(G1,G2=None,two_way=False,k_print=None,
             g1 = G1[i].copy()
             g2 = G2[j].copy()
             _,_,_,D[i,j],D0[i,j]= match_extended_nx(g1,g2,two_way=two_way,
-            w = w,use_node=use_node, attr = attr,algo = algo, max_hc=max_hc)
+            w = w,use_node=use_node,attr = attr,algo = algo, max_hc=max_hc)
             if symm:
                 D[j,i] = D[i,j]
-                D0[j,i] = D0[i,j]
-            k += 1
-            if k%k_print==0:
-                print ('finished {:d} of {:d} comparisons'.format(k,ncmp))
-                print ('time so far: {:5.3f}s'.format(time()-start))
-
+                D0[j,i] = D0[i,j]         
     print('done! time so far: {:5.3f}s'.format(time()-start))
 
     return D, D0
 
 def compute_distmat_paral(G1,G2=None,n_jobs=4,two_way=False,
-                         use_node=False,w=1.0,attr='v',
-                         algo='umeyama',max_hc=None):
+                         use_node=False,w=1.0,attr='v',algo='faq',max_hc=None):
     """parallel version of extended distance matrix.
     """
     n1 = len(G1)
@@ -400,21 +394,19 @@ def compute_distmat_paral(G1,G2=None,n_jobs=4,two_way=False,
     result=[None]*n1
     start = time()
     for i in range(n1):
-        if i%(n1/5)==0: 
-            print(f'computing row {i+1}/{n1}')
+        if (i+1)%(n1/5)==0: 
+            print(f'computing row {i+1}/{n1}, time so far: {time()-start}')
         if symm:
             j0=i+1
         result[i] = Parallel(n_jobs=n_jobs)(delayed(match_extended_nx)(G1[i].copy(),G2[j].copy(),
-              use_node=use_node,w = w,attr = attr,paral=True,algo=algo) for j in range(j0,n2))
-    
-    print('done! time so far: {:5.3f}s'.format(time()-start))
-
+              use_node=use_node,w=w,attr=attr,paral=True,algo=algo) for j in range(j0,n2))
+    print(f'done! time so far: {time()-start}')
     ##
-    D = np.full((n1,n2),0)
+    D = np.zeros((n1,n2))
     if symm:
         for i in range(n1):
             for j in range(i+1,n1):
-                D[i,j]=result[i][j-i-1]
+                D[i,j]=float(result[i][j-i-1])
                 D[j,i]=D[i,j]
     else:
         D = np.array(result)
@@ -450,6 +442,7 @@ def svm_rbf_distmat(D_train,D_valid,D_test,
             
             svc = SVC(C=C,kernel='precomputed',class_weight='balanced')
             svc.fit(Grbf_train,y_train)
+            #svc.decision_function_shape = "ovr"
             y_valid_pred = svc.predict(Grbf_valid)
 
             acc_grid[i,j] = accuracy_score(y_valid,y_valid_pred)
@@ -460,6 +453,7 @@ def svm_rbf_distmat(D_train,D_valid,D_test,
 
     C = C_vec[i]
     gamma = gam_vec[j]
+    print(f'found best C={C} and gamma={gamma}')
 
     Grbf_train = np.exp(-gamma*D_train**2)
     Grbf_valid = np.exp(-gamma*D_valid**2)
@@ -472,7 +466,94 @@ def svm_rbf_distmat(D_train,D_valid,D_test,
     y_valid_pred = svc.predict(Grbf_valid)
     y_test_pred = svc.predict(Grbf_test)
 
-    return y_train_pred,y_valid_pred,y_test_pred, acc_grid,C,gamma
+    return y_train_pred,y_valid_pred,y_test_pred,acc_grid,C,gamma
+
+def svm_rbf_nested_distmat(D_trainval,D_test,y_trainval,y_test,C_vec,gam_vec,folds=5):
+    """Nested cross validation for SVM parameter selection
+    
+
+    Parameters
+    ----------
+    D_trainval : TYPE
+        DESCRIPTION.
+    D_test : TYPE
+        DESCRIPTION.
+    y_trainval : TYPE
+        DESCRIPTION.
+    y_test : TYPE
+        DESCRIPTION.
+    C_vec : TYPE
+        DESCRIPTION.
+    gam_vec : TYPE
+        DESCRIPTION.
+    folds : TYPE, optional
+        DESCRIPTION. The default is 5.
+
+    Returns
+    -------
+    y_train_pred : TYPE
+        DESCRIPTION.
+    y_test_pred : TYPE
+        DESCRIPTION.
+    mean_acc_grid : TYPE
+        DESCRIPTION.
+    C : TYPE
+        DESCRIPTION.
+    gamma : TYPE
+        DESCRIPTION.
+
+    """
+    n_trainval = D_trainval.shape[0]
+    if D_test.shape[1]!=n_trainval:
+        D_test = D_test.T
+    
+    N_C = C_vec.size
+    N_gamma = gam_vec.size
+    acc_grid = np.empty((folds,N_C,N_gamma))
+    
+    skf = StratifiedKFold(n_splits=folds)
+    skf.get_n_splits(D_trainval,y_trainval)
+    
+    for k,index in enumerate(skf.split(D_trainval,y_trainval)):
+        print(f'inner loop fold {k}/{folds}')
+        train_index,test_index = index
+        D_train = D_trainval[train_index][:,train_index]
+        D_valid = D_trainval[test_index][:,train_index]
+        y_train = y_trainval[train_index]
+        y_valid = y_trainval[test_index]
+        
+        print ('fitting {:d} models...'.format(N_C*N_gamma))
+        for i in range(N_C):
+            C = C_vec[i]
+            for j in range(N_gamma):
+                gamma = gam_vec[j]
+                
+                Grbf_train = np.exp(-gamma*D_train**2)
+                Grbf_valid = np.exp(-gamma*D_valid**2)
+                
+                svc = SVC(C=C,kernel='precomputed',class_weight='balanced')
+                svc.fit(Grbf_train,y_train)
+                
+                y_valid_pred = svc.predict(Grbf_valid)
+                acc_grid[k,i,j] = accuracy_score(y_valid,y_valid_pred)
+
+    mean_acc_grid = np.mean(acc_grid,axis=0)
+    I = np.argmax(mean_acc_grid)
+    i,j = (I//acc_grid.shape[1], I%acc_grid.shape[1])
+    C = C_vec[i]
+    gamma = gam_vec[j]
+    print(f'found best C={C} and gamma={gamma}')
+
+    Grbf_trainval = np.exp(-gamma*D_trainval**2)
+    Grbf_test = np.exp(-gamma*D_test**2)
+
+    svc = SVC(C=C,kernel='precomputed',class_weight='balanced')
+    svc.fit(Grbf_trainval,y_trainval)
+
+    y_trainval_pred = svc.predict(Grbf_trainval)
+    y_test_pred = svc.predict(Grbf_test)
+
+    return y_trainval_pred,y_test_pred,mean_acc_grid,C,gamma
 
 def kNN_tunek(D_valid,D_test,y_train,y_valid,y_test,kmax=None):
     if kmax is None:

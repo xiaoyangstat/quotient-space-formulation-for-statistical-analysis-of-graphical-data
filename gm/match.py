@@ -12,7 +12,6 @@ from scipy.optimize import linear_sum_assignment
 
 #import matlab.engine # to run faq Matlab code in Python; this is deprecated
 from .faq import sfw # the Python version of FAQ
-from .node import node_square_dists,node_binary_dists,protein_node_dist
 
 def mat_sqdist(A,B):
     return np.sum(np.power(A-B,2) )/2 # divided by 2 because of symmetry
@@ -54,9 +53,9 @@ def permutate_nx(p,G):
     if p.ndim==2:
         p = perm_mat_to_list(p)
 
-    return nx.relabel_nodes(G, dict(zip( p,range(len(p)))))
+    return nx.relabel_nodes(G, dict(zip(p,range(len(p)))))
 
-def umeyama_perm_mat(A,B, D_nd=None):
+def umeyama_perm_mat(A,B,D_nd=None):
     """Spectral based graph matching by Umeyama 1988
     """
     La,Ua = eig_sorted(A)
@@ -74,7 +73,7 @@ def umeyama_perm_mat(A,B, D_nd=None):
 
     return Ap,P
 
-def hill_climb_mat(A,B, P0=None, D_nd=None, max_hc=None):
+def hill_climb_mat(A,B,P0=None,D_nd=None,max_hc=None):
     """Local node exchange.
 
     Improve the matching after umeyama_perm_mat.
@@ -103,6 +102,10 @@ def hill_climb_mat(A,B, P0=None, D_nd=None, max_hc=None):
         P = P0.copy()
     Ap = permutate_adjmat(P,A)
     E = mat_sqdist(Ap,B) + np.sum(D_nd[P==1])
+    
+    if E==0:
+        return Ap,P,E
+    
     Ep = step(A,B,D_nd,P)
 
     k = 0
@@ -120,9 +123,8 @@ def umeyama_then_hill_climb_mat(A,B,D_nd=None, max_hc=None):
     return Ap,P,E
 
 def match_extended_nx(G1,G2,laplacian=False,two_way=False,
-                      use_node=False,w=1.0,D_nd=None,attr='v',
-                      algo = 'umeyama', max_hc=None,
-                      paral = False):
+                      use_node=False,w=1.0,attr='v',
+                      algo='umeyama',max_hc=None,paral=False):
     """Graph Matching
 
     Args:
@@ -145,26 +147,10 @@ def match_extended_nx(G1,G2,laplacian=False,two_way=False,
         N = np.max([n1,n2])
 
     ## distance matrix for node attributes
-    if D_nd is None:
-        D = np.zeros((N,N))
-        if use_node == 'l2':
-            #print('using node attributes:', use_node)
-            D = node_square_dists(G1,G2,attr=attr,two_way=two_way)
-        elif use_node == 'binary':
-            D = node_binary_dists(G1,G2,attr=attr,two_way=two_way)
-            #print('using node attributes:', use_node)
-        elif use_node == 'protein':
-            D = protein_node_dist(G1,G2)
-            #print('using node attributes:', use_node)
-        else:
-            pass
-            #print('using only edge attributes')
-    elif D_nd.shape == (n2,n1):
-        D = np.zeros((N,N))
-        D[:n2,:n1] = D_nd
-    elif D_nd.shape == (N,N):
-        D = D_nd.copy()
-
+    D = np.zeros((N,N))
+    if use_node:
+        D = use_node(G1,G2,attr=attr,two_way=two_way)
+        
     # null nodes padding
     if two_way:
         G1.add_nodes_from(range(n1,N))
@@ -199,12 +185,16 @@ def match_extended_nx(G1,G2,laplacian=False,two_way=False,
         #p = [i-1 for i in p]
 
         # Python
+        ##debug##
+        # import scipy.io as sio
+        # sio.savemat('test.mat', {'A1':A1,'A2':A2})
+        ##
         p = sfw(-1*A2,A1,w*D.transpose())
         A1p = permutate_adjmat(p,A1)
         P = perm_list_to_mat(p)
     else:
         #print('matching graphs using umeyama and hill climb')
-        A1p,P, _= umeyama_then_hill_climb_mat(A1,A2,w*D, max_hc=max_hc)
+        A1p,P, _= umeyama_then_hill_climb_mat(A1,A2,w*D,max_hc=max_hc)
         p = perm_mat_to_list(P)
 
     if two_way:

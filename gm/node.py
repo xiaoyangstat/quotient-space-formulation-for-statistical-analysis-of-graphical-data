@@ -27,9 +27,9 @@ def node_vec_pos(G,attr='v'):
     return pos
 
 def node_square_dists(G1,G2,attr='v',two_way=False):
-    """Compute node distance matrix 
+    """Compute node attribute distance matrix based on square distance
     
-    NxN matrix whose left top is n2xn1 real node distance
+    NxN matrix whose top left is n2xn1 real node distance
     """
     n1 = G1.number_of_nodes()
     n2 = G2.number_of_nodes()
@@ -72,7 +72,6 @@ def node_binary_dists(G1,G2,attr='symbol',two_way=False):
 
     for i in range(n1):
         for j in range(n2):
-#            if G1.node[nd1[i]]['symbol']==G2.node[nd2[j]]['symbol']:
             if G1.nodes[i][attr]==G2.nodes[j][attr]:
                 D[j,i] = 0
             else:
@@ -80,26 +79,25 @@ def node_binary_dists(G1,G2,attr='symbol',two_way=False):
                 
     return D
 
-def protein_node_dist(G1,G2):
-    """return a (n2+n1)x(n2+n1) matrix whose left top is n2xn1 real node distance
+def node_hamming_dists(G1,G2,attr='v',two_way=False):
+    """Compute node attribute distance matrix based on hamming distance
+    
+    NxN matrix whose top left part is n2xn1 real node distance
     """
     n1 = G1.number_of_nodes()
     n2 = G2.number_of_nodes()
 
-    N = n1+n2
-    D = np.empty((N,N))
+    if two_way:
+        N = n1+n2
+    else:
+        N = np.max([n1,n2])
+
+    D = np.zeros((N,N))
 
     for i in range(n1):
         for j in range(n2):
-            D[j,i] = abs(G1.node[i]['length'] - G2.node[j]['length'])
-
-
-    for i in range(n2,N):
-        D[i,:n1] = [G1.node[j]['length'] for j in range(n1)]
-
-    for i in range(n1,N):
-        D[:n2,i] = [G2.node[j]['length'] for j in range(n2)]
-
-    D[n2:,n1:] = np.zeros((n1,n2))
+            attr1 = np.array(G1.nodes[i][attr])
+            attr2 = np.array(G2.nodes[j][attr])
+            D[j,i] = len([i for i, j in zip(attr1, attr2) if i != j])
 
     return D
