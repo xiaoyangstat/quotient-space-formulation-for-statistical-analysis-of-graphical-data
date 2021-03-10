@@ -333,7 +333,7 @@ def pca_scores_to_graphs_structure(pca,scores):
 def compute_distmat(G1,G2=None,two_way=False,use_node=False,w=1.0, attr='v',
                     algo='faq',max_hc=None):
     """Compute pairwise distance matrix in Graph Space for G1 (List) and G2 (List)
-    
+
     Returns:
         D: graph distance matrix
         D0: original distance matrix
@@ -356,7 +356,7 @@ def compute_distmat(G1,G2=None,two_way=False,use_node=False,w=1.0, attr='v',
     start = time()
     j0 = 0
     for i in range(n1):
-        if (i+1)%(n1/5)==0: 
+        if (i+1)%(n1//5)==0:
             print(f'computing row {i+1}/{n1}, time so far: {time()-start}')
         if symm:
             j0=i+1
@@ -369,7 +369,7 @@ def compute_distmat(G1,G2=None,two_way=False,use_node=False,w=1.0, attr='v',
             w = w,use_node=use_node,attr = attr,algo = algo, max_hc=max_hc)
             if symm:
                 D[j,i] = D[i,j]
-                D0[j,i] = D0[i,j]         
+                D0[j,i] = D0[i,j]
     print('done! time so far: {:5.3f}s'.format(time()-start))
 
     return D, D0
@@ -394,7 +394,7 @@ def compute_distmat_paral(G1,G2=None,n_jobs=4,two_way=False,
     result=[None]*n1
     start = time()
     for i in range(n1):
-        if (i+1)%(n1/5)==0: 
+        if (i+1)%(n1//5)==0: 
             print(f'computing row {i+1}/{n1}, time so far: {time()-start}')
         if symm:
             j0=i+1
@@ -425,21 +425,21 @@ def svm_rbf_distmat(D_train,D_valid,D_test,
         D_valid = D_valid.T
     if D_test.shape[1]!=n_train:
         D_test = D_test.T
-    
+
     N_C = C_vec.size
     N_gamma = gam_vec.size
-    
+
     acc_grid = np.empty((N_C,N_gamma))
-    
+
     print ('fitting {:d} models...'.format(N_C*N_gamma))
     for i in range(N_C):
         C = C_vec[i]
         for j in range(N_gamma):
             gamma = gam_vec[j]
-            
+
             Grbf_train = np.exp(-gamma*D_train**2)
             Grbf_valid = np.exp(-gamma*D_valid**2)
-            
+
             svc = SVC(C=C,kernel='precomputed',class_weight='balanced')
             svc.fit(Grbf_train,y_train)
             #svc.decision_function_shape = "ovr"
@@ -470,7 +470,7 @@ def svm_rbf_distmat(D_train,D_valid,D_test,
 
 def svm_rbf_nested_distmat(D_trainval,D_test,y_trainval,y_test,C_vec,gam_vec,folds=5):
     """Nested cross validation for SVM parameter selection
-    
+
 
     Parameters
     ----------
@@ -506,14 +506,14 @@ def svm_rbf_nested_distmat(D_trainval,D_test,y_trainval,y_test,C_vec,gam_vec,fol
     n_trainval = D_trainval.shape[0]
     if D_test.shape[1]!=n_trainval:
         D_test = D_test.T
-    
+
     N_C = C_vec.size
     N_gamma = gam_vec.size
     acc_grid = np.empty((folds,N_C,N_gamma))
-    
+
     skf = StratifiedKFold(n_splits=folds)
     skf.get_n_splits(D_trainval,y_trainval)
-    
+
     for k,index in enumerate(skf.split(D_trainval,y_trainval)):
         print(f'inner loop fold {k}/{folds}')
         train_index,test_index = index
@@ -521,19 +521,19 @@ def svm_rbf_nested_distmat(D_trainval,D_test,y_trainval,y_test,C_vec,gam_vec,fol
         D_valid = D_trainval[test_index][:,train_index]
         y_train = y_trainval[train_index]
         y_valid = y_trainval[test_index]
-        
+
         print ('fitting {:d} models...'.format(N_C*N_gamma))
         for i in range(N_C):
             C = C_vec[i]
             for j in range(N_gamma):
                 gamma = gam_vec[j]
-                
+
                 Grbf_train = np.exp(-gamma*D_train**2)
                 Grbf_valid = np.exp(-gamma*D_valid**2)
-                
+
                 svc = SVC(C=C,kernel='precomputed',class_weight='balanced')
                 svc.fit(Grbf_train,y_train)
-                
+
                 y_valid_pred = svc.predict(Grbf_valid)
                 acc_grid[k,i,j] = accuracy_score(y_valid,y_valid_pred)
 

@@ -12,7 +12,7 @@ from networkx.drawing.nx_agraph import graphviz_layout
 
 def fill_pos(pos,n,deviation = 2):
     """fill out the missing position by mean+-deviation*std
-    
+
     Args:
         n: number of total nodes
     """
@@ -54,13 +54,18 @@ def remove_weak_nodes(G,thr=0,verbose=False):
 
     G1=G.copy()
 
+    total_weight = 0
+    removed_weight = 0
     for (u,v,d) in G.edges(data=True):
+        total_weight += d['weight']
         if d['weight']<thr:
+            removed_weight += d['weight']
             G1.edges[u,v]['weight']=0
             G1.remove_edge(u,v)
 
     if verbose:
         print('removed {:.2f}% weak edges'.format(100-100*len(G1.edges)/len(G.edges)))
+        print(f'removed {removed_weight/total_weight*100}% weights')
 
     G2 = G1.copy()
     for i in nx.isolates(G2):

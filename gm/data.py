@@ -428,3 +428,28 @@ def build_PTC_MR_dataset(path,one_hot=True):
         data.append((g,i[1]))
 
     return data
+
+def build_NCI1_dataset(path):
+    node_dic=node_labels_dic(path,'NCI1_node_labels.txt')
+    node_dic2={}
+    for k,v in node_dic.items():
+        node_dic2[k]=v-1
+    node_dic=node_dic2
+    graphs=graph_label_list(path,'NCI1_graph_labels.txt')
+    adjency=compute_adjency(path,'NCI1_A.txt')
+    data_dict=graph_indicator(path,'NCI1_graph_indicator.txt')
+    data=[]
+    for i in graphs:
+        g=nx.Graph()
+        for node in data_dict[i[0]]:
+            g.graph['id'] = i[0]
+            g.add_node(node)
+            attr=indices_to_one_hot(node_dic2[node],37)
+            g.nodes[node]['attr'] = attr
+            for node2 in adjency[node]:
+                g.add_edge(node,node2)
+ 
+        g = nx.convert_node_labels_to_integers(g)
+        data.append((g,i[1]))
+
+    return data
